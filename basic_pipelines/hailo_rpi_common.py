@@ -18,6 +18,13 @@ try:
 except ImportError:
     sys.exit("Failed to import hailo python module. Make sure you are in hailo virtual environment.")
 
+
+# Camera and AI server configuration
+CAMERA_HOST = "192.168.0.176"  # IP camera stream URL without auth
+CAMERA_PORT = 554
+USERNAME = "admin"  # Replace with your camera username
+PASSWORD = "U1tk0mst_nvr"  # Replace with your camera password
+
 # -----------------------------------------------------------------------------------------------
 # User-defined class to be used in the callback function
 # -----------------------------------------------------------------------------------------------
@@ -115,9 +122,14 @@ def display_user_data_frame(user_data: app_callback_class):
     cv2.destroyAllWindows()
 
 def get_default_parser():
+    global CAMERA_HOST
+    global CAMERA_PORT
+    global USERNAME
+    global PASSWORD
     parser = argparse.ArgumentParser(description="Hailo App Help")
     current_path = os.path.dirname(os.path.abspath(__file__))
-    default_video_source = os.path.join(current_path, '../resources/detection0.mp4')
+    # default_video_source = os.path.join(current_path, '../resources/detection0.mp4')
+    default_video_source = f"rtsp://{USERNAME}:{PASSWORD}@{CAMERA_HOST}:{CAMERA_PORT}/stream1"
     parser.add_argument(
         "--input", "-i", type=str, default=default_video_source,
         help="Input source. Can be a file, USB or RPi camera (CSI camera module). \
@@ -153,11 +165,12 @@ def get_source_type(input_source):
     # return values can be "file", "mipi" or "usb"
     if input_source.startswith("/dev/video"):
         return 'usb'
-    else:
-        if input_source.startswith("rpi"):
+    elif input_source.startswith("rpi"):
             return 'rpi'
-        else:
-            return 'file'
+    elif input_source.startswith("rtsp"):
+            return 'rtsp'
+    else:
+        return 'file'
 
 def QUEUE(name, max_size_buffers=3, max_size_bytes=0, max_size_time=0, leaky='no'):
     """
@@ -196,6 +209,14 @@ def SOURCE_PIPELINE(video_source, video_format='RGB', video_width=640, video_hei
         source_element = (
             f'libcamerasrc name={name} ! '
             f'video/x-raw, format={video_format}, width=1536, height=864 ! '
+        )
+    elif self.source_type == "rtsp":
+        source_element = (
+            f"rtspsrc location={self.video_source} name=src_0  message-forward=true ! "
+            + "rtph264depay !"
+            + "queue name=hailo_preprocess_q_0 leaky=no max-size-buffers=5 max-size-bytes=0 max-size-time=0 ! "
+            + "decodebin ! queue leaky=downstream max-size-buffers=5 max-size-bytes=0 max-size-time=0 ! "
+            " video/x-raw, format=I420 ! "
         )
     elif source_type == 'usb':
         source_element = (
